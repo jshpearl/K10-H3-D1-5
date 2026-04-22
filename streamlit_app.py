@@ -309,6 +309,10 @@ st.markdown("<style>header {visibility: hidden;} footer {visibility: hidden;}</s
 if 'all_used_words' not in st.session_state:
     st.session_state.all_used_words = []
 
+if 'user_answers' not in st.session_state:
+    # Đổi user_answers thành dạng dictionary để lưu đáp án theo từng câu (hỗ trợ quay lại)
+    st.session_state.user_answers = {}
+
 if 'master_questions' not in st.session_state:
     # Lọc bỏ TẤT CẢ các từ đã từng xuất hiện
     available = [v for v in vocab_db if v['h'] not in st.session_state.all_used_words]
@@ -351,13 +355,13 @@ if 'master_questions' not in st.session_state:
     st.session_state.master_questions = questions
     st.session_state.current_idx = 0
     st.session_state.score = 0
-    st.session_state.user_answers = []
+    st.session_state.user_answers = {}
     st.session_state.quiz_done = False
 
 # --- 4. HIỂN THỊ CÂU HỎI ---
 if not st.session_state.quiz_done:
     st.title("🎓 K10 ÔN TẬP 275 TỪ VỰNG HSK3")
-    st.info(f"Đã luyện tập: {len(st.session_state.all_used_words)} / 275 từ. Các lần tiếp theo sẽ được chọn ngẫu nhiên không trùng lại!")
+    st.info(f"Đã luyện tập: {len(st.session_state.all_used_words)} / 275 từ. Các lần tiếp theo sẽ không trùng lại!")
     
     idx = st.session_state.current_idx
     q = st.session_state.master_questions[idx]
@@ -366,19 +370,41 @@ if not st.session_state.quiz_done:
     st.subheader(f"Câu {idx+1}/20")
     st.markdown(f"### {q['q']}")
     
-    choice = st.radio("Chọn đáp án của bạn:", q['options'], key=f"q_{idx}")
+    # Giữ lại lựa chọn cũ nếu học viên quay lại câu này
+    saved_ans = st.session_state.user_answers.get(idx)
+    default_idx = q['options'].index(saved_ans) if saved_ans in q['options'] else 0
+        
+    choice = st.radio("Chọn đáp án của bạn:", q['options'], index=default_idx, key=f"radio_{idx}")
     
-    if st.button("Câu tiếp theo ➡️"):
-        st.session_state.user_answers.append(choice)
-        if choice == q['a']:
-            st.session_state.score += 1
-            
+    # Thiết kế 2 cột cho 2 nút Quay lại và Tiếp theo
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if idx > 0:
+            if st.button("⬅️ Quay lại câu trước"):
+                st.session_state.user_answers[idx] = choice # Lưu tạm đáp án câu hiện tại
+                st.session_state.current_idx -= 1
+                st.rerun()
+                
+    with col2:
         if idx < 19:
-            st.session_state.current_idx += 1
-            st.rerun()
+            if st.button("Câu tiếp theo ➡️"):
+                st.session_state.user_answers[idx] = choice # Lưu đáp án câu hiện tại
+                st.session_state.current_idx += 1
+                st.rerun()
         else:
-            st.session_state.quiz_done = True
-            st.rerun()
+            if st.button("Nộp bài 🏁"):
+                st.session_state.user_answers[idx] = choice
+                
+                # Bắt đầu tính điểm toàn bộ bài
+                final_score = 0
+                for i, mq in enumerate(st.session_state.master_questions):
+                    if st.session_state.user_answers.get(i) == mq['a']:
+                        final_score += 1
+                
+                st.session_state.score = final_score
+                st.session_state.quiz_done = True
+                st.rerun()
 
 else:
     st.balloons()
@@ -396,7 +422,7 @@ else:
     st.divider()
     st.subheader("Xem lại bài làm lần này:")
     for i, q in enumerate(st.session_state.master_questions):
-        user_ans = st.session_state.user_answers[i]
+        user_ans = st.session_state.user_answers.get(i, "Chưa chọn")
         is_correct = user_ans == q['a']
         icon = "✅" if is_correct else "❌"
         
